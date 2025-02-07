@@ -1,7 +1,9 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getAnalytics } from "firebase/analytics";
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+
 const firebaseConfig = {
   apiKey: "AIzaSyCqcAV6h7oFCmR6EvzFPnNuXwtxNTEaaM8",
   authDomain: "sporelinkapp.firebaseapp.com",
@@ -12,8 +14,23 @@ const firebaseConfig = {
   measurementId: "G-57L8N8RD3C"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+
+// Initialize Auth with persistence
+let auth;
+if (Platform.OS === 'web') {
+  auth = getAuth(app);
+} else {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+  });
+}
+
 const db = getFirestore(app);
+
+console.log('Firebase initialized:', !!app);
+console.log('Auth initialized:', !!auth);
+console.log('Firestore initialized:', !!db);
 
 export { auth, db }; 
