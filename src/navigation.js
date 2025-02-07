@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from './context/AuthContext';
+import { theme } from './utils/theme';
 
 // Auth Screens
 import LoginScreen from './screens/auth/LoginScreen';
@@ -35,19 +36,21 @@ function AppTabs() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#f4511e',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: theme.colors.accent1,
+        tabBarInactiveTintColor: theme.colors.neutral2,
         tabBarStyle: {
-          paddingBottom: 5,
-          paddingTop: 5,
+          paddingBottom: theme.spacing.sm,
+          paddingTop: theme.spacing.sm,
           height: 60,
+          backgroundColor: theme.colors.secondary,
+          borderTopColor: theme.colors.neutral1,
         },
         headerStyle: {
-          backgroundColor: '#f4511e',
+          backgroundColor: theme.colors.primary,
         },
-        headerTintColor: '#fff',
+        headerTintColor: theme.colors.secondary,
         headerTitleStyle: {
-          fontWeight: 'bold',
+          fontWeight: '600',
         },
       })}
     >
@@ -74,7 +77,8 @@ function AuthStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerShown: false
+        headerShown: false,
+        cardStyle: { backgroundColor: theme.colors.secondary }
       }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { theme } from '../utils/theme';
 
 export default function DashboardScreen() {
   return (
@@ -26,64 +27,56 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F6F6',
+    backgroundColor: theme.colors.secondary,
   },
   scrollView: {
     flex: 1,
-    padding: 16,
+    padding: theme.spacing.md,
   },
   header: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 20,
+    ...theme.typography.h1,
+    marginBottom: theme.spacing.lg,
   },
   growCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: theme.colors.neutral3,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    ...theme.shadows.medium,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.accent1,
   },
   growTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
+    ...theme.typography.h2,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.sm,
   },
   growDetails: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 4,
+    ...theme.typography.body,
+    color: theme.colors.neutral2,
+    marginBottom: theme.spacing.xs,
   },
   sectionHeader: {
-    fontSize: 22,
-    fontWeight: '600',
-    marginTop: 24,
-    marginBottom: 16,
+    ...theme.typography.h2,
+    marginTop: theme.spacing.xl,
+    marginBottom: theme.spacing.md,
   },
   envCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: theme.colors.neutral3,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+    ...theme.shadows.small,
   },
   envTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+    ...theme.typography.h2,
+    fontSize: 20,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.sm,
   },
   envDetails: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 4,
+    ...theme.typography.body,
+    color: theme.colors.neutral2,
+    marginBottom: theme.spacing.xs,
   },
 }); 
