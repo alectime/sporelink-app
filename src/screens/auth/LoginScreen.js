@@ -10,6 +10,7 @@ import {
   Platform
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
+import { theme } from '../../utils/theme';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -27,6 +28,7 @@ export default function LoginScreen({ navigation }) {
       setLoading(true);
       await login(email, password);
     } catch (error) {
+      console.error('Login error:', error);
       Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
@@ -45,6 +47,7 @@ export default function LoginScreen({ navigation }) {
         <TextInput
           style={styles.input}
           placeholder="Email"
+          placeholderTextColor={theme.colors.neutral2}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -54,13 +57,14 @@ export default function LoginScreen({ navigation }) {
         <TextInput
           style={styles.input}
           placeholder="Password"
+          placeholderTextColor={theme.colors.neutral2}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
 
         <TouchableOpacity
-          style={styles.button}
+          style={[styles.button, loading && styles.buttonDisabled]}
           onPress={handleLogin}
           disabled={loading}
         >
@@ -85,54 +89,55 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F6F6',
+    backgroundColor: theme.colors.secondary,
   },
   formContainer: {
     flex: 1,
-    padding: 24,
+    padding: theme.spacing.xl,
     justifyContent: 'center',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 8,
+    ...theme.typography.h1,
+    marginBottom: theme.spacing.xs,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 32,
+    ...theme.typography.body,
+    color: theme.colors.neutral2,
+    marginBottom: theme.spacing.xl,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
+    backgroundColor: theme.colors.neutral3,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    marginBottom: theme.spacing.md,
     fontSize: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    color: theme.colors.primary,
+    borderWidth: 1,
+    borderColor: theme.colors.neutral1,
+    ...theme.shadows.small,
   },
   button: {
-    backgroundColor: '#f4511e',
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: theme.colors.accent1,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: theme.spacing.md,
+    ...theme.shadows.medium,
+  },
+  buttonDisabled: {
+    backgroundColor: theme.colors.neutral1,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: theme.colors.secondary,
     fontSize: 16,
     fontWeight: '600',
   },
   linkButton: {
-    marginTop: 16,
+    marginTop: theme.spacing.md,
     alignItems: 'center',
   },
   linkText: {
-    color: '#f4511e',
+    color: theme.colors.accent1,
     fontSize: 16,
   },
 }); 

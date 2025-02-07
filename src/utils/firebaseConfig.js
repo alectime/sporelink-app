@@ -25,17 +25,26 @@ const firebaseConfig = {
   measurementId: FIREBASE_MEASUREMENT_ID || "G-57L8N8RD3C"
 };
 
+console.log('Initializing Firebase with config:', firebaseConfig);
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
 // Initialize Auth with persistence
 let auth;
-if (Platform.OS === 'web') {
-  auth = getAuth(app);
-} else {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-  });
+try {
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+    console.log('Web auth initialized');
+  } else {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+    });
+    console.log('Mobile auth initialized with persistence');
+  }
+} catch (error) {
+  console.error('Error initializing auth:', error);
+  auth = getAuth(app); // Fallback to basic auth
 }
 
 const db = getFirestore(app);
