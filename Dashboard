@@ -1,0 +1,54 @@
+// Root directory structure for SporeLink V1 Mobile App
+sporelink-app/
+│
+├── frontend/                 # React Native (Expo) mobile app
+│   ├── src/
+│   │   ├── App.js           # Main app component
+│   │   ├── navigation.js    # Navigation configuration
+│   │   └── context.js       # Global state management
+│   │
+│   ├── components/          # Reusable UI components
+│   │   ├── GrowthTracker.js
+│   │   ├── Community.js
+│   │   ├── Education.js
+│   │   └── Subscription.js
+│   │
+│   ├── screens/             # Main app screens
+│   │   ├── HomeScreen.js
+│   │   ├── TrackingScreen.js
+│   │   ├── CommunityScreen.js
+│   │   ├── EducationScreen.js
+│   │   └── SubscriptionScreen.js
+│   │
+│   ├── utils/              # Helper functions and configs
+│   │   ├── firebaseConfig.js
+│   │   └── helpers.js
+│   │
+│   └── services/           # API and service integrations
+│       ├── api.js
+│       ├── auth.js
+│       └── database.js
+│
+└── backend/                # Firebase/Node.js backend
+    ├── server.js          # Main server file
+    │
+    ├── config/
+    │   └── firebaseAdmin.js
+    │
+    ├── models/            # Database models
+    │   ├── User.js
+    │   ├── GrowthLog.js
+    │   ├── Subscription.js
+    │   └── CommunityPost.js
+    │
+    ├── controllers/       # Business logic
+    │   ├── userController.js
+    │   ├── growthController.js
+    │   ├── subscriptionController.js
+    │   └── communityController.js
+    │
+    └── routes/           # API endpoints
+        ├── userRoutes.js
+        ├── growthRoutes.js
+        ├── subscriptionRoutes.js
+        └── communityRoutes.js
