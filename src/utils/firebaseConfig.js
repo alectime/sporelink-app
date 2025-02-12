@@ -1,9 +1,40 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, initializeAuth, getReactNativePersistence, browserLocalPersistence, setPersistence } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { 
+  getAuth, 
+  initializeAuth, 
+  getReactNativePersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
+  setPersistence,
+  connectAuthEmulator,
+  onAuthStateChanged
+} from "firebase/auth";
+import { 
+  getFirestore, 
+  enableIndexedDbPersistence, 
+  connectFirestoreEmulator,
+  initializeFirestore,
+  CACHE_SIZE_UNLIMITED,
+  setLogLevel,
+  enableMultiTabIndexedDbPersistence,
+  waitForPendingWrites
+} from "firebase/firestore";
+import { 
+  getStorage, 
+  ref as storageRef,
+  connectStorageEmulator 
+} from "firebase/storage";
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { getDatabase, ref, onValue } from 'firebase/database';
+
+// Enable detailed logging in development
+if (__DEV__) {
+  setLogLevel('debug');
+}
+
+console.log('Starting Firebase initialization...');
 
 const {
   FIREBASE_API_KEY,
@@ -25,70 +56,128 @@ const firebaseConfig = {
   measurementId: FIREBASE_MEASUREMENT_ID || "G-57L8N8RD3C"
 };
 
-console.log('Initializing Firebase with config:', firebaseConfig);
+// Initialize base app first
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('Firebase app initialized successfully');
+} catch (error) {
+  console.error('Error initializing Firebase app:', error);
+  throw error;
+}
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Initialize Auth with persistence
+// Initialize auth with appropriate persistence
 let auth;
 try {
   if (Platform.OS === 'web') {
     auth = getAuth(app);
-    // Set persistence for web
-    setPersistence(auth, browserLocalPersistence)
+    console.log('Web auth initialized');
+    
+    // Set up persistence with fallback
+    setPersistence(auth, browserSessionPersistence)
       .then(() => {
-        console.log('Web auth persistence set to local');
+        console.log('Web auth session persistence initialized');
       })
       .catch((error) => {
-        console.error('Error setting auth persistence:', error);
+        console.warn('Failed to set session persistence, falling back to in-memory:', error);
+        setPersistence(auth, inMemoryPersistence)
+          .catch((error) => console.error('Failed to set in-memory persistence:', error));
       });
   } else {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(ReactNativeAsyncStorage)
     });
+    console.log('Mobile auth initialized with persistence');
   }
-  console.log('Auth initialized successfully for platform:', Platform.OS);
 } catch (error) {
   console.error('Error initializing auth:', error);
-  // Fallback to basic auth with more detailed error logging
-  console.error('Falling back to basic auth. Error details:', error.message);
   auth = getAuth(app);
 }
 
-const db = getFirestore(app);
+// Initialize Firestore with appropriate settings
+let db;
+try {
+  const firestoreSettings = {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
+    useFetchStreams: false,
+    ignoreUndefinedProperties: true,
+    // Add retry settings
+    maxAttempts: 5,
+    retryDelayMultiplier: 2,
+    initialRetryDelayMillis: 1000,
+    maxRetryDelayMillis: 10000
+  };
 
-// Enable offline persistence for Firestore
-if (Platform.OS === 'web') {
-  enableIndexedDbPersistence(db, {
-    synchronizeTabs: true
-  })
-    .then(() => {
-      console.log('Firestore offline persistence enabled for web');
-    })
-    .catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-      } else if (err.code === 'unimplemented') {
-        console.warn('The current browser does not support persistence');
+  db = initializeFirestore(app, firestoreSettings);
+  console.log('Firestore initialized with settings');
+
+  if (Platform.OS === 'web') {
+    // Enable multi-tab persistence for web platform
+    enableMultiTabIndexedDbPersistence(db)
+      .then(() => {
+        console.log('Multi-tab IndexedDB persistence enabled successfully');
+      })
+      .catch((err) => {
+        if (err.code === 'failed-precondition') {
+          // Multiple tabs open, fallback to single-tab persistence
+          return enableIndexedDbPersistence(db, {
+            synchronizeTabs: false,
+            forceOwnership: true
+          });
+        } else if (err.code === 'unimplemented') {
+          console.warn('Browser doesnt support persistence');
+        }
+        throw err;
+      })
+      .catch((err) => {
+        console.error('Error enabling persistence:', err);
+      });
+
+    // Add connection state listener
+    const connectedRef = ref(getDatabase(app), '.info/connected');
+    onValue(connectedRef, (snap) => {
+      if (snap.val() === true) {
+        console.log('Connected to Firebase');
+        // Sync pending writes when connection is restored
+        waitForPendingWrites(db)
+          .then(() => console.log('Pending writes synchronized'))
+          .catch(err => console.warn('Error syncing pending writes:', err));
+      } else {
+        console.log('Not connected to Firebase');
       }
-      console.error('Firestore persistence error:', err);
     });
+  }
+} catch (error) {
+  console.error('Error initializing Firestore:', error);
+  db = getFirestore(app);
 }
 
-// Add error event listener for auth state changes
-auth.onAuthStateChanged((user) => {
-  if (user) {
-    console.log('User is signed in:', user.uid);
-  } else {
-    console.log('User is signed out');
+// Initialize Firebase Storage
+let storage;
+try {
+  storage = getStorage(app);
+  console.log('Firebase Storage initialized successfully');
+} catch (error) {
+  console.error('Error initializing Firebase Storage:', error);
+}
+
+// Connect to emulators in development
+if (__DEV__ && Platform.OS === 'web' && window.location.hostname === 'localhost') {
+  try {
+    connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+    connectFirestoreEmulator(db, 'localhost', 8080);
+    connectStorageEmulator(storage, 'localhost', 9199);
+    console.log('Connected to Firebase emulators');
+  } catch (error) {
+    console.warn('Failed to connect to emulators:', error);
   }
-}, (error) => {
-  console.error('Auth state change error:', error);
+}
+
+// Set up auth state listener
+onAuthStateChanged(auth, (user) => {
+  console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
 });
 
-console.log('Firebase initialized:', !!app);
-console.log('Auth initialized:', !!auth);
-console.log('Firestore initialized:', !!db);
-
-export { auth, db }; 
+export { app, auth, db, storage }; 

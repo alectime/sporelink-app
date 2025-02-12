@@ -15,8 +15,13 @@ import {
   doc,
   updateDoc,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  getDoc,
+  setDoc,
+  onSnapshot
 } from 'firebase/firestore';
+import { auth } from '../utils/firebaseConfig';
+import { retry } from '../utils/retry';
 
 const GROW_STAGES = [
   'Inoculation',
@@ -29,9 +34,47 @@ const GROW_STAGES = [
   'Substrate Recycling'
 ];
 
+// Helper functions
+const formatDate = (date) => {
+  if (!date || !(date instanceof Date) || isNaN(date)) {
+    console.warn('Invalid date provided to formatDate:', date);
+    return 'Invalid Date';
+  }
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
+};
+
+const calculateDaysSince = (startDate) => {
+  if (!startDate || !(startDate instanceof Date) || isNaN(startDate)) {
+    console.warn('Invalid date provided to calculateDaysSince:', startDate);
+    return 0;
+  }
+  const now = new Date();
+  const start = new Date(startDate);
+  const diffTime = Math.abs(now - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+};
+
+// Add the retry utility function before the DashboardScreen component
+const retryOperation = async (operation, maxAttempts = 3) => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt === maxAttempts) throw error;
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
 export default function DashboardScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [environmentData, setEnvironmentData] = useState({
     temperature: '--',
     humidity: '--',
@@ -87,45 +130,86 @@ export default function DashboardScreen() {
   // Load environment data from Firestore
   useEffect(() => {
     const loadEnvironmentData = async () => {
+      if (!user?.uid) {
+        console.log('No user ID available, skipping environment data load');
+        setLoading(false);
+        return;
+      }
+
       try {
         const envRef = doc(db, 'environments', user.uid);
-        const envDoc = await getDocs(envRef);
         
-        if (envDoc.exists()) {
-          const data = envDoc.data();
-          setEnvironmentData({
-            temperature: data.temperature || '--',
-            humidity: data.humidity || '--',
-            lastUpdate: data.lastUpdate ? data.lastUpdate.toDate() : null,
-            notes: data.notes || '',
-            history: data.history.map(h => ({
-              ...h,
-              timestamp: h.timestamp.toDate()
-            }))
-          });
-        }
+        // Set up real-time listener for environment updates
+        const unsubscribe = onSnapshot(envRef, 
+          (doc) => {
+            if (doc.exists()) {
+              const data = doc.data();
+              setEnvironmentData({
+                temperature: data.temperature || '--',
+                humidity: data.humidity || '--',
+                lastUpdate: data.lastUpdate?.toDate() || null,
+                notes: data.notes || '',
+                history: (data.history || []).map(h => ({
+                  ...h,
+                  timestamp: h.timestamp?.toDate() || new Date()
+                }))
+              });
+            } else {
+              // Initialize with empty data if no document exists
+              setEnvironmentData({
+                temperature: '--',
+                humidity: '--',
+                lastUpdate: null,
+                notes: '',
+                history: []
+              });
+              
+              // Create initial environment document
+              try {
+                setDoc(envRef, {
+                  temperature: '--',
+                  humidity: '--',
+                  lastUpdate: null,
+                  notes: '',
+                  history: [],
+                  createdAt: serverTimestamp()
+                });
+              } catch (error) {
+                console.warn('Failed to create initial environment document:', error);
+                // Don't throw - the document will be created when first update happens
+              }
+            }
+            setLoading(false);
+          },
+          (error) => {
+            console.error('Error listening to environment updates:', error);
+            if (error.code === 'unavailable' || error.message.includes('offline')) {
+              // When offline, just show the last known state
+              console.log('Offline - using last known environment state');
+            } else {
+              Alert.alert(
+                'Note',
+                'Having trouble connecting to the server. Some data may be outdated.'
+              );
+            }
+            setLoading(false);
+          }
+        );
+
+        // Cleanup subscription on unmount
+        return () => unsubscribe();
       } catch (error) {
-        console.error('Error loading environment data:', error);
+        console.error('Error in loadEnvironmentData:', error);
+        Alert.alert(
+          'Note',
+          'Unable to load environment data. Please check your connection.'
+        );
+        setLoading(false);
       }
     };
 
     loadEnvironmentData();
   }, [user]);
-
-  const formatDate = (date) => {
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
-  };
-
-  const calculateDaysSince = (startDate) => {
-    const now = new Date();
-    const start = new Date(startDate);
-    const diffTime = Math.abs(now - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
 
   const validateAndParseDate = (dateString) => {
     // Accept format MM/DD/YY or MM/DD/YYYY
@@ -220,61 +304,130 @@ export default function DashboardScreen() {
     }
   };
 
-  const handleUpdateEnvironment = async () => {
-    // Validate inputs
-    const temp = parseFloat(tempInput);
-    const humidity = parseFloat(humidityInput);
-
-    if (isNaN(temp) || isNaN(humidity)) {
-      Alert.alert('Invalid Input', 'Please enter valid numbers for temperature and humidity');
-      return;
-    }
-
-    if (humidity < 0 || humidity > 100) {
-      Alert.alert('Invalid Humidity', 'Humidity must be between 0 and 100%');
-      return;
-    }
-
-    if (temp < 0 || temp > 120) {
-      Alert.alert('Invalid Temperature', 'Temperature must be between 0°F and 120°F');
-      return;
-    }
-
+  const handleUpdateEnvironment = async (newData) => {
     try {
       setLoading(true);
-      const timestamp = new Date();
+      setError(null);
+
+      // Validate inputs
+      const temp = parseFloat(newData.temperature);
+      const humidity = parseFloat(newData.humidity);
+
+      if (isNaN(temp) || isNaN(humidity)) {
+        setError('Please enter valid numbers for temperature and humidity');
+        Alert.alert('Invalid Input', 'Please enter valid numbers for temperature and humidity');
+        return;
+      }
+
+      if (humidity < 0 || humidity > 100) {
+        setError('Humidity must be between 0 and 100%');
+        Alert.alert('Invalid Humidity', 'Humidity must be between 0 and 100%');
+        return;
+      }
+
+      if (temp < 0 || temp > 120) {
+        setError('Temperature must be between 0°F and 120°F');
+        Alert.alert('Invalid Temperature', 'Temperature must be between 0°F and 120°F');
+        return;
+      }
+
+      if (!auth.currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      const userId = auth.currentUser.uid;
+      console.log('Updating environment for user:', userId);
+
+      // Create new reading
       const newReading = {
-        temperature: temp.toString(),
-        humidity: humidity.toString(),
-        timestamp,
-        notes: notesInput
+        temperature: temp,
+        humidity: humidity,
+        notes: newData.notes || '',
+        timestamp: new Date()
       };
 
-      const envRef = doc(db, 'environments', user.uid);
-      await updateDoc(envRef, {
+      // Update local state first for immediate feedback
+      const newEnvironmentData = {
         temperature: temp.toString(),
         humidity: humidity.toString(),
-        lastUpdate: timestamp,
-        notes: notesInput,
-        history: [newReading, ...environmentData.history.slice(0, 9)] // Keep last 10 readings
-      });
-
-      setEnvironmentData(prev => ({
-        ...prev,
-        temperature: temp.toString(),
-        humidity: humidity.toString(),
-        lastUpdate: timestamp,
-        notes: notesInput,
-        history: [newReading, ...prev.history].slice(0, 10)
-      }));
+        lastUpdate: newReading.timestamp,
+        notes: newData.notes || '',
+        history: [newReading, ...(environmentData.history || [])].slice(0, 100)
+      };
       
+      setEnvironmentData(newEnvironmentData);
       setShowEnvModal(false);
       setTempInput('');
       setHumidityInput('');
       setNotesInput('');
+
+      // Get a reference to the user's environment document
+      const envRef = doc(db, 'environments', userId);
+
+      try {
+        // Attempt to update with retry logic
+        await retryOperation(async () => {
+          // First update: main document
+          await setDoc(envRef, {
+            temperature: temp,
+            humidity: humidity,
+            lastUpdate: serverTimestamp(),
+            notes: newData.notes || '',
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+
+          // Second update: history array
+          await updateDoc(envRef, {
+            history: [
+              {
+                temperature: temp,
+                humidity: humidity,
+                notes: newData.notes || '',
+                timestamp: serverTimestamp()
+              },
+              ...(environmentData.history || []).slice(0, 99)
+            ]
+          });
+        });
+
+        console.log('Environment update successful');
+      } catch (error) {
+        console.error('Error updating Firestore:', error);
+        
+        if (error.code === 'unavailable' || 
+            error.message.includes('offline') || 
+            error.message.includes('Failed to get document') ||
+            error.message.includes('client is offline')) {
+          Alert.alert(
+            'Offline Mode',
+            'You are currently offline. Changes have been saved locally and will sync when you are back online.'
+          );
+        } else {
+          Alert.alert(
+            'Warning',
+            'Changes saved locally but failed to sync with server. Will retry automatically when possible.'
+          );
+        }
+      }
     } catch (error) {
-      console.error('Error updating environment:', error);
-      Alert.alert('Error', 'Failed to update environment data');
+      console.error('Error in handleUpdateEnvironment:', error);
+      let errorMessage = 'Failed to update environment data. ';
+      
+      if (error.code === 'unavailable' || 
+          error.message.includes('offline') || 
+          error.message.includes('client is offline')) {
+        errorMessage = 'Currently offline. Data will be saved locally and synced when connection is restored.';
+        setShowEnvModal(false);
+      } else if (error.code === 'permission-denied') {
+        errorMessage += 'You do not have permission to update this data.';
+      } else if (error.message.includes('not authenticated')) {
+        errorMessage += 'Please sign in again to continue.';
+      } else {
+        errorMessage += error.message;
+      }
+      
+      setError(errorMessage);
+      Alert.alert('Note', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -443,7 +596,11 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.updateButton}
-                  onPress={handleUpdateEnvironment}
+                  onPress={() => handleUpdateEnvironment({ 
+                    temperature: tempInput, 
+                    humidity: humidityInput, 
+                    notes: notesInput.trim() 
+                  })}
                 >
                   <Text style={styles.updateButtonText}>Save</Text>
                 </TouchableOpacity>

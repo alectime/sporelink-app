@@ -1,32 +1,20 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { auth, db } from '../utils/firebaseConfig';
+import { auth } from '../utils/firebaseConfig';
 import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword,
-  signOut,
+  signInWithEmailAndPassword, 
+  signOut, 
   onAuthStateChanged,
   browserLocalPersistence,
-  setPersistence
+  setPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { Platform } from 'react-native';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Platform } from 'react-native';
 
-const AuthContext = createContext({
-  user: null,
-  loading: true,
-  error: null,
-  login: async () => {},
-  logout: async () => {},
-  initialized: false
-});
+const AuthContext = createContext({});
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return useContext(AuthContext);
 }
 
 export function AuthProvider({ children }) {
@@ -35,20 +23,30 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [initialized, setInitialized] = useState(false);
 
-  // Initialize auth state listener
   useEffect(() => {
     console.log('AuthContext: Setting up auth listener...');
     let unsubscribe;
-    
+
     const initializeAuth = async () => {
       try {
-        // Set up web persistence first
         if (Platform.OS === 'web') {
-          await setPersistence(auth, browserLocalPersistence);
-          console.log('Web auth persistence initialized');
+          // Try to set up browser persistence
+          try {
+            await setPersistence(auth, browserLocalPersistence);
+            console.log('Browser local persistence initialized');
+          } catch (persistenceError) {
+            console.warn('Failed to set local persistence, trying session persistence:', persistenceError);
+            try {
+              await setPersistence(auth, browserSessionPersistence);
+              console.log('Browser session persistence initialized');
+            } catch (sessionError) {
+              console.warn('Failed to set session persistence, falling back to in-memory:', sessionError);
+              await setPersistence(auth, inMemoryPersistence);
+              console.log('In-memory persistence initialized');
+            }
+          }
         }
 
-        // Set up auth state listener
         unsubscribe = onAuthStateChanged(auth, 
           (user) => {
             console.log('AuthContext: Auth state changed:', user ? 'User signed in' : 'User signed out');
@@ -81,38 +79,13 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const signup = async (email, password, profileData) => {
-    setError(null);
-    console.log('Starting signup process...');
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      console.log('User created:', userCredential.user.uid);
-
-      // Create user profile in Firestore
-      const userDocRef = doc(db, 'users', userCredential.user.uid);
-      const userData = {
-        ...profileData,
-        createdAt: new Date().toISOString(),
-        email: userCredential.user.email,
-        lastLogin: new Date().toISOString()
-      };
-
-      console.log('Creating user profile...');
-      await setDoc(userDocRef, userData);
-      console.log('User profile created successfully');
-
-      return userCredential.user;
-    } catch (error) {
-      console.error('Signup error:', error);
-      setError(error);
-      throw error;
-    }
-  };
-
   const login = async (email, password) => {
     if (!initialized) {
-      console.error('AuthContext: Cannot login - auth not initialized');
-      throw new Error('Authentication not initialized');
+      throw new Error('Authentication system not initialized');
+    }
+
+    if (!email || !password) {
+      throw new Error('Email and password are required');
     }
 
     console.log('AuthContext: Attempting login...');
@@ -126,10 +99,9 @@ export function AuthProvider({ children }) {
       return userCredential.user;
     } catch (error) {
       console.error('AuthContext: Login error:', error);
-      setError(error);
       
       // Provide more user-friendly error messages
-      let errorMessage = 'An error occurred during login.';
+      let errorMessage;
       switch (error.code) {
         case 'auth/invalid-email':
           errorMessage = 'Invalid email address format.';
@@ -149,10 +121,22 @@ export function AuthProvider({ children }) {
         case 'auth/network-request-failed':
           errorMessage = 'Network error. Please check your internet connection.';
           break;
+        case 'auth/internal-error':
+          errorMessage = 'Authentication service is temporarily unavailable. Please try again later.';
+          break;
+        case 'auth/operation-not-allowed':
+          errorMessage = 'Email/password sign-in is not enabled. Please contact support.';
+          break;
+        default:
+          errorMessage = error.message || 'An unexpected error occurred during login.';
       }
       
-      error.message = errorMessage;
-      throw error;
+      const enhancedError = new Error(errorMessage);
+      enhancedError.code = error.code;
+      enhancedError.originalError = error;
+      
+      setError(enhancedError);
+      throw enhancedError;
     } finally {
       setLoading(false);
     }
@@ -160,8 +144,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     if (!initialized) {
-      console.error('AuthContext: Cannot logout - auth not initialized');
-      throw new Error('Authentication not initialized');
+      throw new Error('Authentication system not initialized');
     }
 
     console.log('AuthContext: Attempting logout...');
@@ -174,12 +157,23 @@ export function AuthProvider({ children }) {
       console.log('AuthContext: Logout successful');
     } catch (error) {
       console.error('AuthContext: Logout error:', error);
-      setError(error);
-      throw error;
+      const errorMessage = 'Failed to sign out. Please try again.';
+      const enhancedError = new Error(errorMessage);
+      enhancedError.originalError = error;
+      setError(enhancedError);
+      throw enhancedError;
     } finally {
       setLoading(false);
     }
   };
+
+  if (!initialized) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
+  }
 
   const value = {
     user,

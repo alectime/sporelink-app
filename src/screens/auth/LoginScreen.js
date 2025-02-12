@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,31 +7,84 @@ import {
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { theme } from '../../utils/theme';
 
 export default function LoginScreen({ navigation }) {
+  const { login, loading: authLoading, error: authError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
+  useEffect(() => {
+    // Reset error message when inputs change
+    setErrorMessage('');
+  }, [email, password]);
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateInputs = () => {
+    console.log('Validating inputs...');
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage('Please fill in all fields');
+      return false;
     }
 
+    if (!validateEmail(email)) {
+      setErrorMessage('Please enter a valid email address');
+      return false;
+    }
+
+    if (password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters long');
+      return false;
+    }
+
+    if (loginAttempts >= 5) {
+      setErrorMessage('Too many login attempts. Please try again later.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleLogin = async () => {
     try {
-      setLoading(true);
-      await login(email, password);
+      setIsLoading(true);
+      setErrorMessage('');
+
+      if (!validateInputs()) {
+        return;
+      }
+
+      console.log('Attempting login with email:', email);
+      await login(email.trim(), password);
+      console.log('Login successful');
+      setLoginAttempts(0); // Reset attempts on success
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Error', error.message);
+      setLoginAttempts(prev => prev + 1);
+      
+      // Handle specific error cases
+      if (error.code === 'auth/too-many-requests') {
+        setErrorMessage('Too many failed attempts. Please try again later.');
+      } else if (error.code === 'auth/network-request-failed') {
+        setErrorMessage('Network error. Please check your internet connection and try again.');
+      } else if (error.code === 'auth/internal-error') {
+        setErrorMessage('Service temporarily unavailable. Please try again in a few minutes.');
+      } else {
+        setErrorMessage(error.message || 'An unexpected error occurred. Please try again.');
+      }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -44,38 +97,57 @@ export default function LoginScreen({ navigation }) {
         <Text style={styles.title}>Welcome Back</Text>
         <Text style={styles.subtitle}>Sign in to continue</Text>
 
+        {errorMessage ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        ) : null}
+
         <TextInput
-          style={styles.input}
+          style={[styles.input, errorMessage && styles.inputError]}
           placeholder="Email"
           placeholderTextColor={theme.colors.neutral2}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          editable={!isLoading}
+          autoCorrect={false}
+          textContentType="emailAddress"
+          autoComplete="email"
         />
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, errorMessage && styles.inputError]}
           placeholder="Password"
           placeholderTextColor={theme.colors.neutral2}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          editable={!isLoading}
+          textContentType="password"
+          autoComplete="password"
         />
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[
+            styles.button,
+            (isLoading || loginAttempts >= 5) && styles.buttonDisabled
+          ]}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={isLoading || loginAttempts >= 5}
         >
-          <Text style={styles.buttonText}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </Text>
+          {isLoading ? (
+            <ActivityIndicator color={theme.colors.secondary} />
+          ) : (
+            <Text style={styles.buttonText}>Sign In</Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.linkButton}
           onPress={() => navigation.navigate('Signup')}
+          disabled={isLoading}
         >
           <Text style={styles.linkText}>
             Don't have an account? Sign up
@@ -105,6 +177,17 @@ const styles = StyleSheet.create({
     color: theme.colors.neutral2,
     marginBottom: theme.spacing.xl,
   },
+  errorContainer: {
+    backgroundColor: theme.colors.error + '20',
+    padding: theme.spacing.sm,
+    borderRadius: theme.borderRadius.sm,
+    marginBottom: theme.spacing.md,
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: 14,
+    textAlign: 'center',
+  },
   input: {
     backgroundColor: theme.colors.neutral3,
     padding: theme.spacing.md,
@@ -116,6 +199,9 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.neutral1,
     ...theme.shadows.small,
   },
+  inputError: {
+    borderColor: theme.colors.error,
+  },
   button: {
     backgroundColor: theme.colors.accent1,
     padding: theme.spacing.md,
@@ -123,6 +209,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: theme.spacing.md,
     ...theme.shadows.medium,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   buttonDisabled: {
     backgroundColor: theme.colors.neutral1,
