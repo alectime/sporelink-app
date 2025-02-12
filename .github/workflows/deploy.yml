@@ -8,28 +8,57 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     
     - name: Setup Node.js
-      uses: actions/setup-node@v2
+      uses: actions/setup-node@v4
       with:
         node-version: '18.x'
         cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
         
     - name: Install Dependencies
       run: npm ci
+      
+    - name: Cache Expo Dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.npm
+          ~/node_modules
+          ~/.expo
+        key: ${{ runner.os }}-expo-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-expo-
         
     - name: Setup Expo
-      uses: expo/expo-github-action@v7
+      uses: expo/expo-github-action@v8
       with:
         expo-version: latest
         token: ${{ secrets.EXPO_TOKEN }}
+        packager: npm
+        
+    - name: Create env file
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}" >> .env
+        echo "FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}" >> .env
+        echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
+        echo "FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}" >> .env
+        echo "FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+        echo "FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}" >> .env
+        echo "FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID }}" >> .env
         
     - name: Build Web
       if: github.ref == 'refs/heads/main'
-      run: expo build:web
+      run: |
+        npx expo install --fix
+        npx expo export:web
       env:
         FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
         FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
@@ -41,16 +70,30 @@ jobs:
         
     - name: Deploy to Firebase Hosting
       if: github.ref == 'refs/heads/main'
-      uses: FirebaseExtended/action-hosting-deploy@v0
+      uses: FirebaseExtended/action-hosting-deploy@v0.7.1
       with:
         repoToken: ${{ secrets.GITHUB_TOKEN }}
         firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         channelId: live
         projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+        entryPoint: frontend
+        
+    - name: Create staging env file
+      if: github.ref == 'refs/heads/staging'
+      run: |
+        echo "FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY_STAGING }}" >> .env
+        echo "FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}" >> .env
+        echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID_STAGING }}" >> .env
+        echo "FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}" >> .env
+        echo "FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}" >> .env
+        echo "FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID_STAGING }}" >> .env
+        echo "FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID_STAGING }}" >> .env
         
     - name: Build Development
       if: github.ref == 'refs/heads/staging'
-      run: expo build:web --config app.staging.config.js
+      run: |
+        npx expo install --fix
+        npx expo export:web
       env:
         FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
         FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
@@ -62,9 +105,10 @@ jobs:
         
     - name: Deploy to Firebase Hosting (Staging)
       if: github.ref == 'refs/heads/staging'
-      uses: FirebaseExtended/action-hosting-deploy@v0
+      uses: FirebaseExtended/action-hosting-deploy@v0.7.1
       with:
         repoToken: ${{ secrets.GITHUB_TOKEN }}
         firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}
         channelId: staging
-        projectId: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }} 
+        projectId: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
+        entryPoint: frontend 
