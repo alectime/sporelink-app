@@ -880,12 +880,6 @@ export default function DashboardScreen() {
           </View>
         </Modal>
       </ScrollView>
-      <TouchableOpacity onPress={signOut} style={styles.signOutButton}>
-        <Text style={styles.signOutText}>
-          <span className="material-icons">logout</span>
-          Sign Out
-        </Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -1138,19 +1132,5 @@ const styles = StyleSheet.create({
     ...theme.typography.caption,
     color: theme.colors.neutral2,
     textAlign: 'right',
-  },
-  signOutButton: {
-    backgroundColor: '#ff4444',
-    padding: 10,
-    borderRadius: 5,
-    marginTop: 20,
-  },
-  signOutText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
   },
 }); 
