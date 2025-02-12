@@ -22,11 +22,9 @@ jobs:
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
         
-    - name: Install Dependencies
-      run: npm ci
-      
     - name: Cache Expo Dependencies
       uses: actions/cache@v4
+      id: expo-cache
       with:
         path: |
           ~/.npm
@@ -36,6 +34,10 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-expo-
         
+    - name: Install Dependencies
+      if: steps.expo-cache.outputs.cache-hit != 'true'
+      run: npm ci
+        
     - name: Setup Expo
       uses: expo/expo-github-action@v8
       with:
@@ -43,21 +45,26 @@ jobs:
         token: ${{ secrets.EXPO_TOKEN }}
         packager: npm
         
-    - name: Create env file
+    - name: Create env file (Production)
       if: github.ref == 'refs/heads/main'
       run: |
-        echo "FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}" >> .env
-        echo "FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}" >> .env
-        echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
-        echo "FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}" >> .env
-        echo "FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}" >> .env
-        echo "FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}" >> .env
-        echo "FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID }}" >> .env
+        cat > .env << EOL
+        FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
+        FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
+        FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
+        FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
+        FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+        FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
+        FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID }}
+        EOL
         
-    - name: Build Web
+    - name: Build Web (Production)
       if: github.ref == 'refs/heads/main'
       run: |
+        set -e
+        echo "Installing Expo dependencies..."
         npx expo install --fix
+        echo "Building web application..."
         npx expo export:web
       env:
         FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
@@ -68,7 +75,7 @@ jobs:
         FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
         FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
         
-    - name: Deploy to Firebase Hosting
+    - name: Deploy to Firebase Hosting (Production)
       if: github.ref == 'refs/heads/main'
       uses: FirebaseExtended/action-hosting-deploy@v0.7.1
       with:
@@ -78,21 +85,26 @@ jobs:
         projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
         entryPoint: frontend
         
-    - name: Create staging env file
+    - name: Create env file (Staging)
       if: github.ref == 'refs/heads/staging'
       run: |
-        echo "FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY_STAGING }}" >> .env
-        echo "FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}" >> .env
-        echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID_STAGING }}" >> .env
-        echo "FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}" >> .env
-        echo "FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}" >> .env
-        echo "FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID_STAGING }}" >> .env
-        echo "FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID_STAGING }}" >> .env
+        cat > .env << EOL
+        FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY_STAGING }}
+        FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
+        FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
+        FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
+        FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
+        FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID_STAGING }}
+        FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID_STAGING }}
+        EOL
         
-    - name: Build Development
+    - name: Build Web (Staging)
       if: github.ref == 'refs/heads/staging'
       run: |
+        set -e
+        echo "Installing Expo dependencies..."
         npx expo install --fix
+        echo "Building web application..."
         npx expo export:web
       env:
         FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
@@ -111,4 +123,10 @@ jobs:
         firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}
         channelId: staging
         projectId: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
-        entryPoint: frontend 
+        entryPoint: frontend
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        rm -f .env
+        rm -rf web-build 
