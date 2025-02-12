@@ -40,9 +40,9 @@ const formatDate = (date) => {
     console.warn('Invalid date provided to formatDate:', date);
     return 'Invalid Date';
   }
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2); // Get last 2 digits of year
   return `${month}/${day}/${year}`;
 };
 
@@ -99,7 +99,14 @@ export default function DashboardScreen() {
   // Load user's grows from Firestore
   useEffect(() => {
     const loadGrows = async () => {
+      if (!user?.uid) {
+        console.log('No user ID available, skipping grows load');
+        setLoading(false);
+        return;
+      }
+
       try {
+        setLoading(true);
         const growsRef = collection(db, 'grows');
         const q = query(
           growsRef,
@@ -107,18 +114,59 @@ export default function DashboardScreen() {
           orderBy('createdAt', 'desc')
         );
         
-        const querySnapshot = await getDocs(q);
-        const grows = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          startDate: doc.data().startDate.toDate(),
-          createdAt: doc.data().createdAt.toDate()
-        }));
-        
-        setActiveGrows(grows);
+        // Add retry logic for network errors
+        const maxRetries = 3;
+        let attempt = 0;
+        let success = false;
+        let lastError;
+
+        while (attempt < maxRetries && !success) {
+          try {
+            const querySnapshot = await getDocs(q);
+            const grows = querySnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              startDate: doc.data().startDate?.toDate() || new Date(),
+              createdAt: doc.data().createdAt?.toDate() || new Date()
+            }));
+            
+            setActiveGrows(grows);
+            success = true;
+          } catch (error) {
+            lastError = error;
+            console.warn(`Attempt ${attempt + 1} failed:`, error);
+            
+            // Only retry on network errors
+            if (!error.message.includes('network') && !error.message.includes('unavailable')) {
+              throw error;
+            }
+            
+            attempt++;
+            if (attempt < maxRetries) {
+              // Exponential backoff
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+            }
+          }
+        }
+
+        if (!success) {
+          throw lastError;
+        }
       } catch (error) {
         console.error('Error loading grows:', error);
-        Alert.alert('Error', 'Failed to load your grows');
+        if (error.message.includes('requires an index')) {
+          Alert.alert(
+            'Setup Required',
+            'The system is still setting up. Please try again in a few minutes.'
+          );
+        } else if (error.message.includes('network') || error.message.includes('unavailable')) {
+          Alert.alert(
+            'Network Error',
+            'Unable to load your grows. Please check your connection and try again.'
+          );
+        } else {
+          Alert.alert('Error', 'Failed to load your grows. Please try again.');
+        }
       } finally {
         setLoading(false);
       }
@@ -212,18 +260,33 @@ export default function DashboardScreen() {
   }, [user]);
 
   const validateAndParseDate = (dateString) => {
-    // Accept format MM/DD/YY or MM/DD/YYYY
-    const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/(\d{2}|\d{4})$/;
-    if (!dateRegex.test(dateString)) {
+    // Accept multiple formats: MM/DD/YY, MM/DD/YYYY, M/D/YY, M/D/YYYY
+    const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/;
+    const match = dateString.match(dateRegex);
+    
+    if (!match) {
       return null;
     }
 
-    const [month, day, year] = dateString.split('/').map(num => parseInt(num, 10));
-    const fullYear = year < 100 ? 2000 + year : year;
-    const date = new Date(fullYear, month - 1, day);
+    let [_, month, day, year] = match;
+    month = parseInt(month, 10);
+    day = parseInt(day, 10);
+    year = parseInt(year, 10);
+
+    // Convert 2-digit year to 4-digit
+    if (year < 100) {
+      year = 2000 + year;
+    }
+
+    // Validate ranges
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+
+    const date = new Date(year, month - 1, day);
 
     // Validate the date is real (e.g., not 02/31/2024)
-    if (date.getMonth() !== month - 1 || date.getDate() !== day || date.getFullYear() !== fullYear) {
+    if (date.getMonth() !== month - 1 || date.getDate() !== day || date.getFullYear() !== year) {
       return null;
     }
 
@@ -256,7 +319,10 @@ export default function DashboardScreen() {
 
     const date = validateAndParseDate(dateInput);
     if (!date) {
-      Alert.alert('Invalid Date', 'Please enter a valid date in MM/DD/YY format');
+      Alert.alert(
+        'Invalid Date',
+        'Please enter a valid date in MM/DD/YY format (e.g., 02/12/24)'
+      );
       return;
     }
 
@@ -287,18 +353,58 @@ export default function DashboardScreen() {
       setSelectedStage(GROW_STAGES[0]);
       setShowNewGrowModal(false);
       
-      // Then update Firestore
-      const docRef = await addDoc(collection(db, 'grows'), newGrow);
-      
-      // Update the temporary ID with the real one
-      setActiveGrows(prevGrows => prevGrows.map(grow => 
-        grow.id === tempId ? { ...grow, id: docRef.id } : grow
-      ));
+      // Then update Firestore with retry logic
+      const maxRetries = 3;
+      let attempt = 0;
+      let success = false;
+      let lastError;
+
+      while (attempt < maxRetries && !success) {
+        try {
+          const docRef = await addDoc(collection(db, 'grows'), newGrow);
+          
+          // Update the temporary ID with the real one
+          setActiveGrows(prevGrows => prevGrows.map(grow => 
+            grow.id === tempId ? { ...grow, id: docRef.id } : grow
+          ));
+          success = true;
+        } catch (error) {
+          lastError = error;
+          console.warn(`Attempt ${attempt + 1} failed:`, error);
+          
+          // Only retry on network errors
+          if (!error.message.includes('network') && !error.message.includes('unavailable')) {
+            throw error;
+          }
+          
+          attempt++;
+          if (attempt < maxRetries) {
+            // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          }
+        }
+      }
+
+      if (!success) {
+        throw lastError;
+      }
       
     } catch (error) {
       console.error('Error adding grow:', error);
-      Alert.alert('Error', 'Failed to save your grow');
-      setActiveGrows(prevGrows => prevGrows.filter(grow => !grow.id.startsWith('temp-')));
+      if (error.message.includes('requires an index')) {
+        Alert.alert(
+          'Setup Required',
+          'The system is still setting up. Please try again in a few minutes.'
+        );
+      } else if (error.message.includes('network') || error.message.includes('unavailable')) {
+        Alert.alert(
+          'Network Error',
+          'Your grow has been saved locally and will sync when connection is restored.'
+        );
+      } else {
+        Alert.alert('Error', 'Failed to save your grow. Please try again.');
+        setActiveGrows(prevGrows => prevGrows.filter(grow => !grow.id.startsWith('temp-')));
+      }
     } finally {
       setLoading(false);
     }
@@ -679,10 +785,14 @@ export default function DashboardScreen() {
                   style={styles.input}
                   value={dateInput}
                   onChangeText={handleDateInputChange}
-                  placeholder="MM/DD/YY"
+                  placeholder="MM/DD/YY (e.g., 02/12/24)"
+                  placeholderTextColor={theme.colors.neutral2}
                   keyboardType="numeric"
                   maxLength={8}
                 />
+                <Text style={styles.inputHelper}>
+                  Format: MM/DD/YY (e.g., 02/12/24)
+                </Text>
               </View>
 
               <View style={styles.inputContainer}>
@@ -975,5 +1085,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: theme.colors.secondary,
+  },
+  inputHelper: {
+    ...theme.typography.caption,
+    color: theme.colors.neutral2,
+    textAlign: 'right',
   },
 }); 

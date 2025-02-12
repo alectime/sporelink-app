@@ -15,6 +15,20 @@
       ]
     },
     {
+      "collectionGroup": "grows",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "environments",
       "queryScope": "COLLECTION",
       "fields": [
