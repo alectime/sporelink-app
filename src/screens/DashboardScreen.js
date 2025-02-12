@@ -265,6 +265,7 @@ export default function DashboardScreen() {
     const match = dateString.match(dateRegex);
     
     if (!match) {
+      console.warn('Date string does not match expected format:', dateString);
       return null;
     }
 
@@ -275,21 +276,44 @@ export default function DashboardScreen() {
 
     // Convert 2-digit year to 4-digit
     if (year < 100) {
-      year = 2000 + year;
+      // If year is less than current year's last two digits, assume it's in the future
+      const currentYear = new Date().getFullYear();
+      const currentYearLastTwo = currentYear % 100;
+      if (year <= currentYearLastTwo) {
+        year = 2000 + year;
+      } else {
+        year = 1900 + year;
+      }
     }
 
     // Validate ranges
-    if (month < 1 || month > 12 || day < 1 || day > 31) {
+    if (month < 1 || month > 12) {
+      console.warn('Invalid month:', month);
+      return null;
+    }
+
+    // Get the last day of the month
+    const lastDayOfMonth = new Date(year, month, 0).getDate();
+    if (day < 1 || day > lastDayOfMonth) {
+      console.warn('Invalid day for month:', day, 'Month:', month);
       return null;
     }
 
     const date = new Date(year, month - 1, day);
 
-    // Validate the date is real (e.g., not 02/31/2024)
-    if (date.getMonth() !== month - 1 || date.getDate() !== day || date.getFullYear() !== year) {
+    // Ensure the date is valid and matches our input
+    if (
+      date.getMonth() !== month - 1 || 
+      date.getDate() !== day || 
+      date.getFullYear() !== year ||
+      isNaN(date.getTime())
+    ) {
+      console.warn('Date validation failed:', { month, day, year, resultDate: date });
       return null;
     }
 
+    // Set the time to midnight for consistent comparison
+    date.setHours(0, 0, 0, 0);
     return date;
   };
 
@@ -326,6 +350,15 @@ export default function DashboardScreen() {
       return;
     }
 
+    // Check if date is in the future
+    if (date > new Date()) {
+      Alert.alert(
+        'Invalid Date',
+        'Start date cannot be in the future'
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -333,17 +366,20 @@ export default function DashboardScreen() {
       const newGrow = {
         userId: user.uid,
         species: speciesInput.trim(),
-        startDate: date,
+        startDate: serverTimestamp(), // Will be updated with the correct date below
         stage: selectedStage,
-        createdAt: now,
-        updatedAt: now
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       };
 
       // Add to local state first for immediate feedback
       const tempId = 'temp-' + now.getTime();
       setActiveGrows(prevGrows => [{
         id: tempId,
-        ...newGrow
+        ...newGrow,
+        startDate: date, // Use the JavaScript Date for local state
+        createdAt: now,
+        updatedAt: now
       }, ...prevGrows]);
 
       // Reset form and close modal immediately
@@ -361,7 +397,13 @@ export default function DashboardScreen() {
 
       while (attempt < maxRetries && !success) {
         try {
+          // Create the document with server timestamps
           const docRef = await addDoc(collection(db, 'grows'), newGrow);
+          
+          // Update the startDate separately to ensure it's the exact date user entered
+          await updateDoc(docRef, {
+            startDate: date
+          });
           
           // Update the temporary ID with the real one
           setActiveGrows(prevGrows => prevGrows.map(grow => 
