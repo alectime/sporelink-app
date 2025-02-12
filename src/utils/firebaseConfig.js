@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, initializeAuth, getReactNativePersistence } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth, initializeAuth, getReactNativePersistence, browserLocalPersistence, setPersistence } from "firebase/auth";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -35,19 +35,57 @@ let auth;
 try {
   if (Platform.OS === 'web') {
     auth = getAuth(app);
-    console.log('Web auth initialized');
+    // Set persistence for web
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => {
+        console.log('Web auth persistence set to local');
+      })
+      .catch((error) => {
+        console.error('Error setting auth persistence:', error);
+      });
   } else {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(ReactNativeAsyncStorage)
     });
-    console.log('Mobile auth initialized with persistence');
   }
+  console.log('Auth initialized successfully for platform:', Platform.OS);
 } catch (error) {
   console.error('Error initializing auth:', error);
-  auth = getAuth(app); // Fallback to basic auth
+  // Fallback to basic auth with more detailed error logging
+  console.error('Falling back to basic auth. Error details:', error.message);
+  auth = getAuth(app);
 }
 
 const db = getFirestore(app);
+
+// Enable offline persistence for Firestore
+if (Platform.OS === 'web') {
+  enableIndexedDbPersistence(db, {
+    synchronizeTabs: true
+  })
+    .then(() => {
+      console.log('Firestore offline persistence enabled for web');
+    })
+    .catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+      } else if (err.code === 'unimplemented') {
+        console.warn('The current browser does not support persistence');
+      }
+      console.error('Firestore persistence error:', err);
+    });
+}
+
+// Add error event listener for auth state changes
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    console.log('User is signed in:', user.uid);
+  } else {
+    console.log('User is signed out');
+  }
+}, (error) => {
+  console.error('Auth state change error:', error);
+});
 
 console.log('Firebase initialized:', !!app);
 console.log('Auth initialized:', !!auth);

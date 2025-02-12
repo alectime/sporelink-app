@@ -13,7 +13,7 @@ import SignupScreen from './screens/auth/SignupScreen';
 
 // App Screens
 import DashboardScreen from './screens/DashboardScreen';
-import CommunityScreen from './screens/CommunityScreen';
+// import CommunityScreen from './screens/CommunityScreen'; // Preserved for V2
 import ProfileScreen from './screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -28,8 +28,6 @@ function AppTabs() {
 
           if (route.name === 'Dashboard') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Community') {
-            iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -60,10 +58,6 @@ function AppTabs() {
         options={{
           title: 'My Grows',
         }}
-      />
-      <Tab.Screen 
-        name="Community" 
-        component={CommunityScreen} 
       />
       <Tab.Screen 
         name="Profile" 
