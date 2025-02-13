@@ -22,49 +22,26 @@ export default function SignupScreen({ navigation }) {
   const { signup } = useAuth();
 
   const handleSignup = async () => {
-    console.log('Starting signup process...');
-    
-    if (!email || !password || !confirmPassword || !username) {
-      console.log('Missing fields:', { email: !!email, password: !!password, confirmPassword: !!confirmPassword, username: !!username });
+    if (!email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     if (password !== confirmPassword) {
-      console.log('Password mismatch');
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
     try {
-      console.log('Attempting to create user with email:', email);
-      setLoading(true);
-      
-      const userData = {
-        username,
-        displayName: username,
-        photoURL: null,
-        bio: '',
-        membershipType: 'free',
-        grows: [],
-        badges: [],
-        joinedAt: new Date().toISOString()
-      };
-      
-      console.log('User data prepared:', userData);
-      
-      const result = await signup(email, password, userData);
-      console.log('Signup successful:', result);
-      
-      Alert.alert('Success', 'Account created successfully!');
+      const result = await signup(email.trim(), password);
+      if (!result.success) {
+        Alert.alert('Signup Failed', result.error);
+        return;
+      }
+      // Signup successful - navigation will be handled by the auth state listener
     } catch (error) {
       console.error('Signup error:', error);
-      Alert.alert(
-        'Error',
-        error.message || 'An error occurred during signup. Please try again.'
-      );
-    } finally {
-      setLoading(false);
+      Alert.alert('Signup Failed', 'An unexpected error occurred. Please try again.');
     }
   };
 

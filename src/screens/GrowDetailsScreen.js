@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../utils/theme';
 import { db } from '../utils/firebaseConfig';
-import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayUnion, getDoc } from 'firebase/firestore';
 import { Icon } from '../components/Icon';
 
 export default function GrowDetailsScreen({ route, navigation }) {
@@ -23,6 +23,7 @@ export default function GrowDetailsScreen({ route, navigation }) {
   const [notes, setNotes] = useState('');
   const [temperature, setTemperature] = useState('');
   const [humidity, setHumidity] = useState('');
+  const [currentGrow, setCurrentGrow] = useState(grow);
 
   const GROW_STAGES = [
     'Inoculation',
@@ -37,25 +38,59 @@ export default function GrowDetailsScreen({ route, navigation }) {
 
   const formatDate = (date) => {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString();
+    // Handle Firestore timestamp
+    if (date.seconds) {
+      return new Date(date.seconds * 1000).toLocaleDateString();
+    }
+    // Handle regular Date object
+    if (date instanceof Date) {
+      return date.toLocaleDateString();
+    }
+    return 'N/A';
   };
 
   const calculateDaysSince = (startDate) => {
     if (!startDate) return 0;
     const now = new Date();
-    const start = new Date(startDate);
+    // Handle Firestore timestamp
+    const start = startDate.seconds ? 
+      new Date(startDate.seconds * 1000) : 
+      new Date(startDate);
     const diffTime = Math.abs(now - start);
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return 'N/A';
-    return new Date(timestamp.seconds * 1000).toLocaleString();
+    // Handle Firestore timestamp
+    if (timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000).toLocaleString();
+    }
+    // Handle regular Date object
+    if (timestamp instanceof Date) {
+      return timestamp.toLocaleString();
+    }
+    return 'N/A';
   };
+
+  useEffect(() => {
+    const loadGrowData = async () => {
+      try {
+        const growRef = doc(db, 'grows', grow.id);
+        const growDoc = await getDoc(growRef);
+        if (growDoc.exists()) {
+          setCurrentGrow({ id: growDoc.id, ...growDoc.data() });
+        }
+      } catch (error) {
+        console.error('Error loading grow data:', error);
+      }
+    };
+
+    loadGrowData();
+  }, [grow.id]);
 
   const handleUpdateProgress = async () => {
     try {
-      // Validate temperature and humidity if provided
       if (temperature && (isNaN(temperature) || parseFloat(temperature) < 0 || parseFloat(temperature) > 120)) {
         Alert.alert('Invalid Input', 'Temperature must be between 0°F and 120°F');
         return;
@@ -66,32 +101,48 @@ export default function GrowDetailsScreen({ route, navigation }) {
       }
 
       const growRef = doc(db, 'grows', grow.id);
+      
+      const newEntry = {
+        timestamp: new Date(),
+        stage: selectedStage,
+        notes: notes.trim(),
+        ...(temperature ? { temperature: parseFloat(temperature) } : {}),
+        ...(humidity ? { humidity: parseFloat(humidity) } : {})
+      };
+
+      const currentHistory = currentGrow.history || [];
+
       const updateData = {
         stage: selectedStage,
-        updatedAt: serverTimestamp(),
-        history: arrayUnion({
-          timestamp: serverTimestamp(),
-          stage: selectedStage,
-          notes: notes.trim(),
-          ...(temperature ? { temperature: parseFloat(temperature) } : {}),
-          ...(humidity ? { humidity: parseFloat(humidity) } : {})
-        })
+        updatedAt: new Date(),
+        history: [...currentHistory, newEntry]
       };
 
       if (notes.trim()) {
         updateData.notes = notes.trim();
       }
 
+      console.log('Updating grow with data:', updateData);
       await updateDoc(growRef, updateData);
+
+      setCurrentGrow(prev => ({
+        ...prev,
+        ...updateData,
+      }));
 
       Alert.alert('Success', 'Grow progress updated successfully');
       setShowUpdateModal(false);
       setNotes('');
       setTemperature('');
       setHumidity('');
+
+      const updatedDoc = await getDoc(growRef);
+      if (updatedDoc.exists()) {
+        setCurrentGrow({ id: updatedDoc.id, ...updatedDoc.data() });
+      }
     } catch (error) {
       console.error('Error updating grow:', error);
-      Alert.alert('Error', 'Failed to update grow progress. Please try again.');
+      Alert.alert('Error', `Failed to update grow progress: ${error.message}`);
     }
   };
 
@@ -105,7 +156,7 @@ export default function GrowDetailsScreen({ route, navigation }) {
           >
             <Icon name="arrow-back" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
-          <Text style={styles.title}>{grow.species}</Text>
+          <Text style={styles.title}>{currentGrow.species}</Text>
         </View>
 
         <View style={styles.card}>
@@ -113,24 +164,17 @@ export default function GrowDetailsScreen({ route, navigation }) {
             <Text style={styles.sectionTitle}>Quick View</Text>
             <View style={styles.infoRow}>
               <Icon name="calendar-outline" size={20} color={theme.colors.accent1} />
-              <Text style={styles.infoText}>Started: {formatDate(grow.startDate)}</Text>
+              <Text style={styles.infoText}>Started: {formatDate(currentGrow.startDate)}</Text>
             </View>
             <View style={styles.infoRow}>
               <Icon name="time-outline" size={20} color={theme.colors.accent1} />
-              <Text style={styles.infoText}>Day {calculateDaysSince(grow.startDate)}</Text>
+              <Text style={styles.infoText}>Day {calculateDaysSince(currentGrow.startDate)}</Text>
             </View>
             <View style={styles.infoRow}>
               <Icon name="leaf-outline" size={20} color={theme.colors.accent1} />
-              <Text style={styles.infoText}>Current Stage: {grow.stage}</Text>
+              <Text style={styles.infoText}>Current Stage: {currentGrow.stage}</Text>
             </View>
           </View>
-
-          {grow.notes && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Notes</Text>
-              <Text style={styles.notes}>{grow.notes}</Text>
-            </View>
-          )}
 
           <TouchableOpacity 
             style={styles.updateButton}
@@ -140,11 +184,11 @@ export default function GrowDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {grow.history && grow.history.length > 0 && (
+        {currentGrow.history && currentGrow.history.length > 0 && (
           <View style={styles.card}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>History</Text>
-              {grow.history.map((entry, index) => (
+              {currentGrow.history.map((entry, index) => (
                 <View key={index} style={styles.historyEntry}>
                   <View style={styles.historyHeader}>
                     <Text style={styles.historyTimestamp}>
@@ -175,7 +219,10 @@ export default function GrowDetailsScreen({ route, navigation }) {
                   )}
                   
                   {entry.notes && (
-                    <Text style={styles.historyNotes}>{entry.notes}</Text>
+                    <View style={styles.notesContainer}>
+                      <Text style={styles.notesLabel}>Notes:</Text>
+                      <Text style={styles.historyNotes}>{entry.notes}</Text>
+                    </View>
                   )}
                   
                   <View style={styles.historySeparator} />
@@ -469,5 +516,14 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.neutral1,
     marginTop: theme.spacing.md,
+  },
+  notesContainer: {
+    marginTop: theme.spacing.xs,
+  },
+  notesLabel: {
+    ...theme.typography.caption,
+    color: theme.colors.neutral2,
+    marginBottom: theme.spacing.xxs,
+    fontWeight: '500',
   },
 }); 

@@ -73,16 +73,25 @@ try {
     auth = getAuth(app);
     console.log('Web auth initialized');
     
-    // Set up persistence with fallback
-    setPersistence(auth, browserSessionPersistence)
-      .then(() => {
-        console.log('Web auth session persistence initialized');
-      })
-      .catch((error) => {
-        console.warn('Failed to set session persistence, falling back to in-memory:', error);
-        setPersistence(auth, inMemoryPersistence)
-          .catch((error) => console.error('Failed to set in-memory persistence:', error));
-      });
+    // Check if we're in an iframe
+    const isIframe = window.self !== window.top;
+    
+    if (!isIframe) {
+      // Only try persistence if we're not in an iframe
+      setPersistence(auth, browserSessionPersistence)
+        .then(() => {
+          console.log('Web auth session persistence initialized');
+        })
+        .catch((error) => {
+          console.warn('Failed to set session persistence, falling back to in-memory:', error);
+          setPersistence(auth, inMemoryPersistence)
+            .catch((error) => console.error('Failed to set in-memory persistence:', error));
+        });
+    } else {
+      console.log('Running in iframe, using in-memory persistence');
+      setPersistence(auth, inMemoryPersistence)
+        .catch((error) => console.error('Failed to set in-memory persistence:', error));
+    }
   } else {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(ReactNativeAsyncStorage)
@@ -91,6 +100,7 @@ try {
   }
 } catch (error) {
   console.error('Error initializing auth:', error);
+  // Fallback to basic auth without persistence
   auth = getAuth(app);
 }
 

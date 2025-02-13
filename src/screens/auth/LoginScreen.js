@@ -57,34 +57,21 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
-    try {
-      setIsLoading(true);
-      setErrorMessage('');
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
 
-      if (!validateInputs()) {
+    try {
+      const result = await login(email.trim(), password);
+      if (!result.success) {
+        Alert.alert('Login Failed', result.error);
         return;
       }
-
-      console.log('Attempting login with email:', email);
-      await login(email.trim(), password);
-      console.log('Login successful');
-      setLoginAttempts(0); // Reset attempts on success
+      // Login successful - navigation will be handled by the auth state listener
     } catch (error) {
       console.error('Login error:', error);
-      setLoginAttempts(prev => prev + 1);
-      
-      // Handle specific error cases
-      if (error.code === 'auth/too-many-requests') {
-        setErrorMessage('Too many failed attempts. Please try again later.');
-      } else if (error.code === 'auth/network-request-failed') {
-        setErrorMessage('Network error. Please check your internet connection and try again.');
-      } else if (error.code === 'auth/internal-error') {
-        setErrorMessage('Service temporarily unavailable. Please try again in a few minutes.');
-      } else {
-        setErrorMessage(error.message || 'An unexpected error occurred. Please try again.');
-      }
-    } finally {
-      setIsLoading(false);
+      Alert.alert('Login Failed', 'An unexpected error occurred. Please try again.');
     }
   };
 

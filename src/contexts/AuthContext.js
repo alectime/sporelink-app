@@ -7,7 +7,8 @@ import {
   browserLocalPersistence,
   setPersistence,
   browserSessionPersistence,
-  inMemoryPersistence
+  inMemoryPersistence,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { ActivityIndicator, View, Platform } from 'react-native';
 
@@ -80,31 +81,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    if (!initialized) {
-      throw new Error('Authentication system not initialized');
-    }
-
-    if (!email || !password) {
-      throw new Error('Email and password are required');
-    }
-
-    console.log('AuthContext: Attempting login...');
     setLoading(true);
-    setError(null);
-
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      console.log('AuthContext: Login successful');
       setUser(userCredential.user);
-      return userCredential.user;
+      return { success: true };
     } catch (error) {
-      console.error('AuthContext: Login error:', error);
+      console.error('Login error:', error);
+      let errorMessage = 'An error occurred during login.';
       
-      // Provide more user-friendly error messages
-      let errorMessage;
       switch (error.code) {
         case 'auth/invalid-email':
-          errorMessage = 'Invalid email address format.';
+          errorMessage = 'Invalid email format.';
           break;
         case 'auth/user-disabled':
           errorMessage = 'This account has been disabled.';
@@ -116,27 +104,48 @@ export function AuthProvider({ children }) {
           errorMessage = 'Incorrect password.';
           break;
         case 'auth/too-many-requests':
-          errorMessage = 'Too many failed attempts. Please try again later.';
+          errorMessage = 'Too many login attempts. Please try again later.';
           break;
         case 'auth/network-request-failed':
-          errorMessage = 'Network error. Please check your internet connection.';
+          errorMessage = 'Network error. Please check your connection.';
           break;
-        case 'auth/internal-error':
-          errorMessage = 'Authentication service is temporarily unavailable. Please try again later.';
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = 'Email/password sign-in is not enabled. Please contact support.';
-          break;
-        default:
-          errorMessage = error.message || 'An unexpected error occurred during login.';
       }
       
-      const enhancedError = new Error(errorMessage);
-      enhancedError.code = error.code;
-      enhancedError.originalError = error;
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signup = async (email, password) => {
+    setLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      setUser(userCredential.user);
+      return { success: true };
+    } catch (error) {
+      console.error('Signup error:', error);
+      let errorMessage = 'An error occurred during signup.';
       
-      setError(enhancedError);
-      throw enhancedError;
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          errorMessage = 'An account already exists with this email.';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Invalid email format.';
+          break;
+        case 'auth/operation-not-allowed':
+          errorMessage = 'Email/password accounts are not enabled.';
+          break;
+        case 'auth/weak-password':
+          errorMessage = 'Password is too weak.';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error. Please check your connection.';
+          break;
+      }
+      
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
     }
@@ -181,6 +190,7 @@ export function AuthProvider({ children }) {
     error,
     login,
     logout,
+    signup,
     initialized
   };
 
