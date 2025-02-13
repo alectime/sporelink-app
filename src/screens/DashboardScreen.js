@@ -803,21 +803,36 @@ export default function DashboardScreen() {
               
               <ScrollView style={styles.historyList}>
                 {environmentData.history.map((reading, index) => (
-                  <View key={index} style={styles.historyItem}>
-                    <Text style={styles.historyDate}>
-                      {reading.timestamp.toLocaleString()}
-                    </Text>
-                    <View style={styles.historyReadings}>
-                      <Text style={styles.historyText}>
-                        Temp: {reading.temperature}°F
-                      </Text>
-                      <Text style={styles.historyText}>
-                        Humidity: {reading.humidity}%
+                  <View key={index} style={styles.historyEntry}>
+                    <View style={styles.historyHeader}>
+                      <Text style={styles.historyTimestamp}>
+                        {reading.timestamp.toLocaleString()}
                       </Text>
                     </View>
+                    
+                    <View style={styles.environmentReadings}>
+                      <View style={styles.reading}>
+                        <Icon name="thermometer-outline" size={16} color={theme.colors.accent1} />
+                        <Text style={styles.readingText}>
+                          {reading.temperature}°F
+                        </Text>
+                      </View>
+                      <View style={styles.reading}>
+                        <Icon name="water-outline" size={16} color={theme.colors.accent1} />
+                        <Text style={styles.readingText}>
+                          {reading.humidity}%
+                        </Text>
+                      </View>
+                    </View>
+                    
                     {reading.notes && (
-                      <Text style={styles.historyNotes}>{reading.notes}</Text>
+                      <View style={styles.notesContainer}>
+                        <Text style={styles.notesLabel}>Notes:</Text>
+                        <Text style={styles.historyNotes}>{reading.notes}</Text>
+                      </View>
                     )}
+                    
+                    <View style={styles.historySeparator} />
                   </View>
                 ))}
               </ScrollView>
@@ -1049,35 +1064,48 @@ const styles = StyleSheet.create({
   historyButton: {
     backgroundColor: theme.colors.accent2,
   },
-  historyList: {
-    maxHeight: 400,
-    marginVertical: theme.spacing.md,
-  },
-  historyItem: {
-    padding: theme.spacing.md,
+  historyEntry: {
+    marginBottom: theme.spacing.md,
     backgroundColor: theme.colors.neutral3,
     borderRadius: theme.borderRadius.md,
-    marginBottom: theme.spacing.sm,
+    padding: theme.spacing.md,
   },
-  historyDate: {
-    ...theme.typography.caption,
-    color: theme.colors.neutral2,
-    marginBottom: theme.spacing.xs,
-  },
-  historyReadings: {
+  historyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: theme.spacing.xs,
   },
-  historyText: {
+  historyTimestamp: {
+    ...theme.typography.caption,
+    color: theme.colors.neutral2,
+  },
+  environmentReadings: {
+    flexDirection: 'row',
+    marginVertical: theme.spacing.xs,
+  },
+  reading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  readingText: {
     ...theme.typography.body,
     color: theme.colors.primary,
+    marginLeft: theme.spacing.xs,
   },
   historyNotes: {
     ...theme.typography.body,
     color: theme.colors.neutral2,
-    fontStyle: 'italic',
-    marginTop: theme.spacing.xs,
+  },
+  historySeparator: {
+    height: 1,
+    backgroundColor: theme.colors.neutral1,
+    marginTop: theme.spacing.md,
+  },
+  historyList: {
+    maxHeight: 400,
+    marginVertical: theme.spacing.md,
   },
   cancelButton: {
     backgroundColor: theme.colors.neutral1,
