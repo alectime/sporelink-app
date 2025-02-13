@@ -18,7 +18,8 @@ import {
   serverTimestamp,
   getDoc,
   setDoc,
-  onSnapshot
+  onSnapshot,
+  arrayUnion
 } from 'firebase/firestore';
 import { auth } from '../utils/firebaseConfig';
 import { retry } from '../utils/retry';
@@ -222,39 +223,45 @@ export default function DashboardScreen() {
           (doc) => {
             if (doc.exists()) {
               const data = doc.data();
+              // Convert timestamps and sort history by timestamp
+              const history = (data.history || [])
+                .map(h => ({
+                  ...h,
+                  timestamp: h.timestamp?.toDate() || new Date(),
+                  temperature: h.temperature?.toString() || '--',
+                  humidity: h.humidity?.toString() || '--'
+                }))
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 100); // Keep only the last 100 entries
+
               setEnvironmentData({
-                temperature: data.temperature || '--',
-                humidity: data.humidity || '--',
+                temperature: data.temperature?.toString() || '--',
+                humidity: data.humidity?.toString() || '--',
                 lastUpdate: data.lastUpdate?.toDate() || null,
                 notes: data.notes || '',
-                history: (data.history || []).map(h => ({
-                  ...h,
-                  timestamp: h.timestamp?.toDate() || new Date()
-                }))
+                history
               });
             } else {
               // Initialize with empty data if no document exists
-              setEnvironmentData({
+              const initialData = {
                 temperature: '--',
                 humidity: '--',
                 lastUpdate: null,
                 notes: '',
                 history: []
-              });
+              };
+              
+              setEnvironmentData(initialData);
               
               // Create initial environment document
               try {
                 setDoc(envRef, {
-                  temperature: '--',
-                  humidity: '--',
-                  lastUpdate: null,
-                  notes: '',
-                  history: [],
-                  createdAt: serverTimestamp()
+                  ...initialData,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
                 });
               } catch (error) {
                 console.warn('Failed to create initial environment document:', error);
-                // Don't throw - the document will be created when first update happens
               }
             }
             setLoading(false);
@@ -262,7 +269,6 @@ export default function DashboardScreen() {
           (error) => {
             console.error('Error listening to environment updates:', error);
             if (error.code === 'unavailable' || error.message.includes('offline')) {
-              // When offline, just show the last known state
               console.log('Offline - using last known environment state');
             } else {
               Alert.alert(
@@ -274,7 +280,6 @@ export default function DashboardScreen() {
           }
         );
 
-        // Cleanup subscription on unmount
         return () => unsubscribe();
       } catch (error) {
         console.error('Error in loadEnvironmentData:', error);
@@ -516,57 +521,55 @@ export default function DashboardScreen() {
       const userId = auth.currentUser.uid;
       console.log('Updating environment for user:', userId);
 
-      // Create new reading
-      const newReading = {
-        temperature: temp,
-        humidity: humidity,
-        notes: newData.notes || '',
-        timestamp: new Date()
-      };
-
-      // Update local state first for immediate feedback
-      const newEnvironmentData = {
-        temperature: temp.toString(),
-        humidity: humidity.toString(),
-        lastUpdate: newReading.timestamp,
-        notes: newData.notes || '',
-        history: [newReading, ...(environmentData.history || [])].slice(0, 100)
-      };
-      
-      setEnvironmentData(newEnvironmentData);
-      setShowEnvModal(false);
-      setTempInput('');
-      setHumidityInput('');
-      setNotesInput('');
-
       // Get a reference to the user's environment document
       const envRef = doc(db, 'environments', userId);
 
+      // Create new history entry with a regular timestamp
+      const now = new Date();
+      const newHistoryEntry = {
+        temperature: temp,
+        humidity: humidity,
+        notes: newData.notes || '',
+        timestamp: now
+      };
+
       try {
-        // Attempt to update with retry logic
-        await retryOperation(async () => {
-          // First update: main document
-          await setDoc(envRef, {
+        // Perform atomic update
+        await updateDoc(envRef, {
+          temperature: temp,
+          humidity: humidity,
+          lastUpdate: serverTimestamp(),
+          notes: newData.notes || '',
+          updatedAt: serverTimestamp(),
+          history: arrayUnion({
             temperature: temp,
             humidity: humidity,
-            lastUpdate: serverTimestamp(),
             notes: newData.notes || '',
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-
-          // Second update: history array
-          await updateDoc(envRef, {
-            history: [
-              {
-                temperature: temp,
-                humidity: humidity,
-                notes: newData.notes || '',
-                timestamp: serverTimestamp()
-              },
-              ...(environmentData.history || []).slice(0, 99)
-            ]
-          });
+            timestamp: now
+          })
         });
+
+        // Update local state
+        const updatedEnvironmentData = {
+          ...environmentData,
+          temperature: temp.toString(),
+          humidity: humidity.toString(),
+          lastUpdate: now,
+          notes: newData.notes || '',
+          history: [
+            {
+              ...newHistoryEntry,
+              timestamp: now
+            },
+            ...(environmentData.history || [])
+          ]
+        };
+        
+        setEnvironmentData(updatedEnvironmentData);
+        setShowEnvModal(false);
+        setTempInput('');
+        setHumidityInput('');
+        setNotesInput('');
 
         console.log('Environment update successful');
       } catch (error) {
@@ -1062,7 +1065,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   historyButton: {
-    backgroundColor: theme.colors.accent2,
+    backgroundColor: '#a9a9a9',
   },
   historyEntry: {
     marginBottom: theme.spacing.md,

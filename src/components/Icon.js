@@ -14,7 +14,11 @@ export const Icon = ({ name, size, color }) => {
         'time-outline': '⏱',
         'thermometer-outline': '🌡',
         'water-outline': '💧',
-        'arrow-back': '←'
+        'arrow-back': '←',
+        'home': '🏠',
+        'home-outline': '🏠',
+        'person': '👤',
+        'person-outline': '👤'
       };
       return iconMap[iconName] || '•';
     };

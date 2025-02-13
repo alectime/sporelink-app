@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon } from './components/Icon';
 
 import { useAuth } from './context/AuthContext';
 import { theme } from './utils/theme';
@@ -53,7 +53,7 @@ function AppTabs() {
             iconName = focused ? 'person' : 'person-outline';
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <Icon name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: theme.colors.accent1,
         tabBarInactiveTintColor: theme.colors.neutral2,
