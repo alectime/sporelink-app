@@ -27,6 +27,14 @@ service cloud.firestore {
              data.stage is string;
     }
 
+    function isValidHistoryEntry(entry) {
+      return entry.timestamp is timestamp &&
+             entry.stage is string &&
+             (!('temperature' in entry) || (entry.temperature is number && entry.temperature >= 0 && entry.temperature <= 120)) &&
+             (!('humidity' in entry) || (entry.humidity is number && entry.humidity >= 0 && entry.humidity <= 100)) &&
+             (!('notes' in entry) || entry.notes is string);
+    }
+
     // Environment data rules with validation
     match /environments/{userId} {
       allow read: if isSignedIn() && isOwner(userId);
@@ -52,7 +60,12 @@ service cloud.firestore {
                       isValidGrowData(request.resource.data);
       allow update: if isSignedIn() && 
                       resource.data.userId == request.auth.uid &&
-                      isValidGrowData(request.resource.data);
+                      isValidGrowData(request.resource.data) &&
+                      (!('history' in request.resource.data) || 
+                        (request.resource.data.history is list && 
+                         request.resource.data.history.size() <= 1000 &&
+                         request.resource.data.history.hasAll(resource.data.history) &&
+                         isValidHistoryEntry(request.resource.data.history[request.resource.data.history.size() - 1])));
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
 
       // Allow offline persistence

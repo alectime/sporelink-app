@@ -15,9 +15,30 @@ import SignupScreen from './screens/auth/SignupScreen';
 import DashboardScreen from './screens/DashboardScreen';
 // import CommunityScreen from './screens/CommunityScreen'; // Preserved for V2
 import ProfileScreen from './screens/ProfileScreen';
+import GrowDetailsScreen from './screens/GrowDetailsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+function AppStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen 
+        name="MainTabs" 
+        component={AppTabs} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="GrowDetails" 
+        component={GrowDetailsScreen}
+        options={{ 
+          headerShown: false,
+          presentation: 'modal'
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
 
 function AppTabs() {
   return (
@@ -86,7 +107,7 @@ export default function Navigation() {
 
   return (
     <NavigationContainer>
-      {user ? <AppTabs /> : <AuthStack />}
+      {user ? <AppStack /> : <AuthStack />}
     </NavigationContainer>
   );
 } 

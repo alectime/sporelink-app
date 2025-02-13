@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { auth } from '../utils/firebaseConfig';
 import { retry } from '../utils/retry';
+import { useNavigation } from '@react-navigation/native';
 
 const GROW_STAGES = [
   'Inoculation',
@@ -71,6 +72,33 @@ const retryOperation = async (operation, maxAttempts = 3) => {
   }
 };
 
+// Helper function to render icons consistently across platforms
+const Icon = ({ name, size, color }) => {
+  if (Platform.OS === 'web') {
+    // Use specific unicode characters for web
+    const getIconContent = (iconName) => {
+      const iconMap = {
+        'add-circle': '⊕',
+        'ellipsis-horizontal': '⋯',
+        'calendar-outline': '📅',
+        'leaf-outline': '🌱',
+        'time-outline': '⏱',
+        'thermometer-outline': '🌡',
+        'water-outline': '💧'
+      };
+      return iconMap[iconName] || '•';
+    };
+    
+    return (
+      <Text style={{ fontSize: size, color, fontWeight: 'bold' }}>
+        {getIconContent(name)}
+      </Text>
+    );
+  }
+  
+  return <Ionicons name={name} size={size} color={color} />;
+};
+
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -95,6 +123,8 @@ export default function DashboardScreen() {
   const [dateInput, setDateInput] = useState(formatDate(new Date()));
   const [selectedStage, setSelectedStage] = useState(GROW_STAGES[0]);
   const [activeGrows, setActiveGrows] = useState([]);
+
+  const navigation = useNavigation();
 
   // Load user's grows from Firestore
   useEffect(() => {
@@ -598,7 +628,7 @@ export default function DashboardScreen() {
             style={styles.addButton}
             onPress={() => setShowNewGrowModal(true)}
           >
-            <Ionicons name="add-circle" size={24} color={theme.colors.accent1} />
+            <Icon name="add-circle" size={24} color={theme.colors.accent1} />
             <Text style={styles.addButtonText}>New Grow</Text>
           </TouchableOpacity>
         </View>
@@ -613,24 +643,27 @@ export default function DashboardScreen() {
                 <View style={styles.growHeader}>
                   <Text style={styles.growTitle}>{grow.species}</Text>
                   <TouchableOpacity>
-                    <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.neutral2} />
+                    <Icon name="ellipsis-horizontal" size={24} color={theme.colors.neutral2} />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.growDetails}>
                   <View style={styles.detailItem}>
-                    <Ionicons name="calendar-outline" size={20} color={theme.colors.accent1} />
+                    <Icon name="calendar-outline" size={20} color={theme.colors.accent1} />
                     <Text style={styles.detailText}>Started: {formatDate(new Date(grow.startDate))}</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Ionicons name="leaf-outline" size={20} color={theme.colors.accent1} />
+                    <Icon name="leaf-outline" size={20} color={theme.colors.accent1} />
                     <Text style={styles.detailText}>Stage: {grow.stage}</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Ionicons name="time-outline" size={20} color={theme.colors.accent1} />
+                    <Icon name="time-outline" size={20} color={theme.colors.accent1} />
                     <Text style={styles.detailText}>Day {calculateDaysSince(grow.startDate)}</Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.updateButton}>
+                <TouchableOpacity 
+                  style={styles.updateButton}
+                  onPress={() => navigation.navigate('GrowDetails', { grow })}
+                >
                   <Text style={styles.updateButtonText}>Update Progress</Text>
                 </TouchableOpacity>
               </View>
@@ -639,16 +672,16 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.environmentSection}>
-          <Text style={styles.sectionHeader}>Environment</Text>
+          <Text style={styles.sectionHeader}>Ambient Environment</Text>
           <View style={styles.envCard}>
             <View style={styles.envRow}>
               <View style={styles.envItem}>
-                <Ionicons name="thermometer-outline" size={24} color={theme.colors.accent1} />
+                <Icon name="thermometer-outline" size={24} color={theme.colors.accent1} />
                 <Text style={styles.envLabel}>Temperature</Text>
                 <Text style={styles.envValue}>{environmentData.temperature}°F</Text>
               </View>
               <View style={styles.envItem}>
-                <Ionicons name="water-outline" size={24} color={theme.colors.accent1} />
+                <Icon name="water-outline" size={24} color={theme.colors.accent1} />
                 <Text style={styles.envLabel}>Humidity</Text>
                 <Text style={styles.envValue}>{environmentData.humidity}%</Text>
               </View>
