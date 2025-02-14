@@ -109,7 +109,6 @@ let db;
 try {
   const firestoreSettings = {
     cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-    experimentalForceLongPolling: true,
     experimentalAutoDetectLongPolling: true,
     useFetchStreams: false,
     ignoreUndefinedProperties: true,
