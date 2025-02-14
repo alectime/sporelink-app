@@ -18,7 +18,8 @@ export const Icon = ({ name, size, color }) => {
         'home': '🏠',
         'home-outline': '🏠',
         'person': '👤',
-        'person-outline': '👤'
+        'person-outline': '👤',
+        'log-out-outline': '🚪'
       };
       return iconMap[iconName] || '•';
     };

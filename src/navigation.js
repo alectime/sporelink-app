@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { TouchableOpacity } from 'react-native';
 import { Icon } from './components/Icon';
 
 import { useAuth } from './context/AuthContext';
@@ -41,6 +42,17 @@ function AppStack() {
 }
 
 function AppTabs() {
+  const { logout } = useAuth();
+
+  const LogoutButton = () => (
+    <TouchableOpacity
+      onPress={logout}
+      style={{ marginRight: theme.spacing.md }}
+    >
+      <Icon name="log-out-outline" size={24} color={theme.colors.secondary} />
+    </TouchableOpacity>
+  );
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -71,6 +83,7 @@ function AppTabs() {
         headerTitleStyle: {
           fontWeight: '600',
         },
+        headerRight: () => <LogoutButton />,
       })}
     >
       <Tab.Screen 
