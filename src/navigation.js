@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, Text } from 'react-native';
 import { Icon } from './components/Icon';
 
 import { useAuth } from './context/AuthContext';
@@ -47,8 +47,14 @@ function AppTabs() {
   const LogoutButton = () => (
     <TouchableOpacity
       onPress={logout}
-      style={{ marginRight: theme.spacing.md }}
+      style={{ 
+        marginRight: theme.spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: theme.spacing.xs
+      }}
     >
+      <Text style={{ color: theme.colors.secondary, fontSize: 16 }}>Logout</Text>
       <Icon name="log-out-outline" size={24} color={theme.colors.secondary} />
     </TouchableOpacity>
   );
