@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isValidEnvironmentData(data) {
+      return data.temperature is number &&
+             data.humidity is number &&
+             data.humidity >= 0 &&
+             data.humidity <= 100 &&
+             data.temperature >= 0 &&
+             data.temperature <= 120;
+    }
+
+    function isValidGrowData(data) {
+      return data.species is string &&
+             data.species.size() > 0 &&
+             data.startDate is timestamp &&
+             data.stage is string;
+    }
+
+    function isValidHistoryEntry(entry) {
+      return entry.timestamp is timestamp &&
+             entry.stage is string &&
+             (!('temperature' in entry) || (entry.temperature is number && entry.temperature >= 0 && entry.temperature <= 120)) &&
+             (!('humidity' in entry) || (entry.humidity is number && entry.humidity >= 0 && entry.humidity <= 100)) &&
+             (!('notes' in entry) || entry.notes is string);
+    }
+
+    function isValidHistory(history) {
+      return history is list &&
+             history.size() <= 1000 &&
+             history.size() > 0;
+    }
+
+    // Environment data rules with validation
+    match /environments/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn() && 
+                      isOwner(userId) && 
+                      isValidEnvironmentData(request.resource.data);
+      allow update: if isSignedIn() && 
+                      isOwner(userId) && 
+                      isValidEnvironmentData(request.resource.data);
+      
+      // Allow offline persistence
+      allow write: if isSignedIn() && 
+                     isOwner(userId) && 
+                     (isValidEnvironmentData(request.resource.data) || 
+                      request.resource.data.keys().hasAll(['__offline', 'pendingWrites']));
+    }
+
+    // Grows collection rules with validation
+    match /grows/{growId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      isValidGrowData(request.resource.data);
+      allow update: if isSignedIn() && 
+                      resource.data.userId == request.auth.uid &&
+                      request.resource.data.stage is string &&
+                      (!('history' in request.resource.data) || isValidHistory(request.resource.data.history));
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // Allow offline persistence
+      allow write: if isSignedIn() && 
+                     request.resource.data.userId == request.auth.uid &&
+                     (isValidGrowData(request.resource.data) || 
+                      request.resource.data.keys().hasAll(['__offline', 'pendingWrites']));
+    }
+  }
+} 

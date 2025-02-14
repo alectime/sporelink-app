@@ -1,0 +1,159 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop, staging ]
+  pull_request:
+    branches: [ main, develop, staging ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      id: npm-cache
+      with:
+        path: |
+          **/node_modules
+          ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+        
+    - name: Install Dependencies
+      if: steps.npm-cache.outputs.cache-hit != 'true'
+      run: |
+        npm ci
+        
+    - name: Create test env file
+      run: |
+        cat > .env.test << EOL
+        FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
+        FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
+        FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
+        FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
+        FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+        FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
+        FIREBASE_MEASUREMENT_ID=${{ secrets.FIREBASE_MEASUREMENT_ID }}
+        EOL
+      
+    - name: Setup Test Environment
+      run: |
+        echo '{
+          "semi": true,
+          "singleQuote": true,
+          "trailingComma": "es5"
+        }' > .prettierrc
+        
+        echo '{
+          "root": true,
+          "extends": [
+            "eslint:recommended",
+            "plugin:react/recommended",
+            "plugin:react-hooks/recommended"
+          ],
+          "plugins": ["react", "react-hooks"],
+          "parserOptions": {
+            "ecmaVersion": 2021,
+            "sourceType": "module",
+            "ecmaFeatures": {
+              "jsx": true
+            }
+          },
+          "env": {
+            "browser": true,
+            "es2021": true,
+            "node": true,
+            "jest": true
+          },
+          "settings": {
+            "react": {
+              "version": "detect"
+            }
+          }
+        }' > .eslintrc.json
+        
+        echo 'module.exports = {
+          testEnvironment: "jsdom",
+          setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
+          moduleNameMapper: {
+            "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+            "\\.(jpg|jpeg|png|gif|webp|svg)$": "<rootDir>/__mocks__/fileMock.js"
+          },
+          collectCoverageFrom: [
+            "src/**/*.{js,jsx}",
+            "!src/**/*.test.{js,jsx}",
+            "!src/index.js",
+            "!src/reportWebVitals.js"
+          ],
+          coverageThreshold: {
+            global: {
+              statements: 80,
+              branches: 80,
+              functions: 80,
+              lines: 80
+            }
+          }
+        }' > jest.config.js
+        
+        mkdir -p __mocks__
+        echo "module.exports = 'test-file-stub';" > __mocks__/fileMock.js
+        
+        echo "import '@testing-library/jest-dom';" > jest.setup.js
+      
+    - name: Check Code Style
+      run: npx prettier --check "src/**/*.{js,jsx,ts,tsx}"
+        
+    - name: Lint Code
+      run: npx eslint "src/**/*.{js,jsx,ts,tsx}"
+        
+    - name: Run Tests with Coverage
+      run: npm test -- --coverage --ci --watchAll=false
+      env:
+        CI: true
+        NODE_ENV: test
+        FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+        FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+        FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+        FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+        
+    - name: Cache Test Results
+      uses: actions/cache@v4
+      with:
+        path: |
+          coverage
+          .jest-cache
+        key: ${{ runner.os }}-test-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-test-
+        
+    - name: Upload Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: frontend/coverage/
+        retention-days: 14
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        rm -f .env.test
+        rm -rf coverage
+        rm -rf .jest-cache 
